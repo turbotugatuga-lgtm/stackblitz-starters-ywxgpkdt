@@ -1,111 +1,207 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Airdrop TurboTuga</title>
+  <meta charset="UTF-8" />
+  <title>Airdrop Solana</title>
   <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900">
+  <div class="max-w-3xl mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">🚀 Airdrop Solana</h1>
+
+    <!-- Botão conectar -->
+    <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">
+      Conectar Carteira Phantom
+    </button>
+    <p id="walletAddress" class="mt-2 text-sm text-gray-700"></p>
+
+    <!-- Selecionar token -->
+    <div class="mt-6">
+      <label class="block font-medium">Token:</label>
+      <select id="tokenSelect" class="w-full border rounded p-2">
+        <option>Conecte a carteira...</option>
+      </select>
+    </div>
+
+    <!-- Quantidade -->
+    <div class="mt-4">
+      <label class="block font-medium">Quantidade a enviar:</label>
+      <input id="amountInput" type="number" min="0" step="any"
+        class="w-full border rounded p-2" placeholder="Ex: 10" />
+    </div>
+
+    <!-- Upload ou manual -->
+    <div class="mt-4">
+      <label class="block font-medium">Destinatários:</label>
+      <textarea id="recipients" class="w-full border rounded p-2"
+        rows="3" placeholder="Cole endereços separados por linha"></textarea>
+      <input id="fileInput" type="file" accept=".txt" class="mt-2" />
+    </div>
+
+    <!-- Custos -->
+    <div class="mt-4 p-3 border rounded bg-white">
+      <p class="text-sm text-gray-700">💰 Taxa fixa: <b>0.00005 SOL</b> por carteira</p>
+      <p id="costInfo" class="text-sm text-gray-700 mt-1">Total: -</p>
+    </div>
+
+    <!-- Botão enviar -->
+    <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">
+      Enviar Tokens
+    </button>
+
+    <!-- Logs -->
+    <pre id="log" class="mt-6 bg-black text-green-400 p-3 rounded h-60 overflow-y-auto text-xs"></pre>
+  </div>
+
+  <!-- Dependências Solana -->
   <script type="module">
-    import { Connection, clusterApiUrl, PublicKey } from "https://esm.sh/@solana/web3.js@1.95.3";
-    import * as splToken from "https://esm.sh/@solana/spl-token@0.3.9";
+    import {
+      Connection,
+      clusterApiUrl,
+      PublicKey,
+      Transaction,
+      SystemProgram
+    } from "https://esm.sh/@solana/web3.js";
 
-    const connection = new Connection(clusterApiUrl("devnet"), "confirmed");
+    import * as splToken from "https://esm.sh/@solana/spl-token";
+
     let wallet = null;
-    const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
-    let selectedToken = null;
+    const connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
+    const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // sua taxa
 
-    async function connectWallet() {
-      if (!window.solana) {
-        alert("Instale a carteira Phantom.");
-        return;
-      }
-      try {
-        const resp = await window.solana.connect();
-        wallet = resp.publicKey;
-        document.getElementById("walletAddress").innerText = wallet.toBase58();
-        loadTokens();
-      } catch (err) {
-        console.error(err);
-      }
+    function log(msg) {
+      const el = document.getElementById("log");
+      el.textContent += msg + "\\n";
+      el.scrollTop = el.scrollHeight;
     }
 
-    async function loadTokens() {
+    // conectar Phantom
+    document.getElementById("connectBtn").onclick = async () => {
       try {
-        document.getElementById("tokenSelect").innerHTML = "";
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, { programId: splToken.TOKEN_PROGRAM_ID });
-        if (tokenAccounts.value.length === 0) {
-          document.getElementById("tokenSelect").innerHTML = "<option>Nenhum token encontrado</option>";
+        const provider = window.solana;
+        if (!provider?.isPhantom) {
+          alert("Instale a Phantom Wallet");
           return;
         }
-        tokenAccounts.value.forEach(acc => {
-          const info = acc.account.data.parsed.info;
-          const mint = info.mint;
-          const amount = info.tokenAmount.uiAmount;
+        const resp = await provider.connect();
+        wallet = new PublicKey(resp.publicKey.toString());
+        document.getElementById("walletAddress").textContent = "Carteira: " + wallet.toBase58();
+        log("Conectado: " + wallet.toBase58());
+        await loadTokens();
+      } catch (e) {
+        log("Erro ao conectar: " + e.message);
+      }
+    };
+
+    // carregar tokens
+    async function loadTokens() {
+      document.getElementById("tokenSelect").innerHTML = "";
+
+      // saldo SOL
+      const balance = await connection.getBalance(wallet);
+      const solOption = document.createElement("option");
+      solOption.value = "SOL";
+      solOption.textContent = `SOL — saldo: ${(balance / 1e9).toFixed(4)}`;
+      document.getElementById("tokenSelect").appendChild(solOption);
+
+      // tokens SPL
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
+        programId: splToken.TOKEN_PROGRAM_ID
+      });
+
+      tokenAccounts.value.forEach(acc => {
+        const info = acc.account.data.parsed.info;
+        const mint = info.mint;
+        const amount = info.tokenAmount.uiAmount;
+        if (amount > 0) {
           const option = document.createElement("option");
           option.value = mint;
           option.textContent = `${mint} — saldo: ${amount}`;
           document.getElementById("tokenSelect").appendChild(option);
-        });
+        }
+      });
+    }
+
+    // calcular custo
+    function updateCost() {
+      const recipients = document.getElementById("recipients").value.trim().split(/\\n+/).filter(x => x);
+      const totalFee = recipients.length * 0.00005;
+      document.getElementById("costInfo").textContent =
+        `Carteiras: ${recipients.length} | Taxa fixa: ${totalFee.toFixed(6)} SOL + gas da rede`;
+    }
+    document.getElementById("recipients").addEventListener("input", updateCost);
+    document.getElementById("fileInput").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      const text = await file.text();
+      document.getElementById("recipients").value = text;
+      updateCost();
+    });
+
+    // enviar
+    document.getElementById("sendBtn").onclick = async () => {
+      try {
+        if (!wallet) {
+          alert("Conecte a carteira primeiro!");
+          return;
+        }
+        const recipients = document.getElementById("recipients").value.trim().split(/\\n+/).filter(x => x);
+        const amount = parseFloat(document.getElementById("amountInput").value);
+        const token = document.getElementById("tokenSelect").value;
+
+        if (!recipients.length || !amount) {
+          alert("Preencha os destinatários e quantidade");
+          return;
+        }
+
+        for (let addr of recipients) {
+          const to = new PublicKey(addr);
+
+          if (token === "SOL") {
+            // enviar SOL
+            let tx = new Transaction().add(
+              SystemProgram.transfer({
+                fromPubkey: wallet,
+                toPubkey: to,
+                lamports: amount * 1e9
+              }),
+              SystemProgram.transfer({
+                fromPubkey: wallet,
+                toPubkey: feeWallet,
+                lamports: 0.00005 * 1e9
+              })
+            );
+            let { signature } = await window.solana.signAndSendTransaction(tx);
+            log("Enviado SOL para " + addr + " tx: " + signature);
+
+          } else {
+            // enviar token SPL
+            const mint = new PublicKey(token);
+            const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
+            const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
+
+            const ix = splToken.createTransferInstruction(
+              fromTokenAcc,
+              toTokenAcc,
+              wallet,
+              amount * (10 ** 6) // assumindo decimais=6
+            );
+
+            let tx = new Transaction().add(ix,
+              SystemProgram.transfer({
+                fromPubkey: wallet,
+                toPubkey: feeWallet,
+                lamports: 0.00005 * 1e9
+              })
+            );
+
+            let { signature } = await window.solana.signAndSendTransaction(tx);
+            log("Enviado SPL " + token + " para " + addr + " tx: " + signature);
+          }
+        }
       } catch (e) {
-        console.error("Erro ao carregar tokens", e);
+        log("Erro envio: " + e.message);
       }
-    }
-
-    function updateFees() {
-      const qty = parseFloat(document.getElementById("tokenAmount").value || "0");
-      const walletsText = document.getElementById("wallets").value.trim();
-      const wallets = walletsText.split("\n").filter(w => w);
-      const count = wallets.length;
-      const fixedFee = 0.00005 * count;
-      const networkFee = 0.000005 * count;
-      document.getElementById("fees").innerText =
-        `Taxa fixa: ${fixedFee.toFixed(6)} SOL + Gas estimado: ${networkFee.toFixed(6)} SOL`;
-    }
-
-    async function sendTokens() {
-      const tokenMint = document.getElementById("tokenSelect").value;
-      const qty = parseFloat(document.getElementById("tokenAmount").value);
-      const walletsText = document.getElementById("wallets").value.trim();
-      const wallets = walletsText.split("\n").filter(w => w);
-
-      if (!tokenMint || !qty || wallets.length === 0) {
-        alert("Preencha todos os campos.");
-        return;
-      }
-
-      alert("🔔 Envio real de tokens deve ser programado com transferências SPL.\nAqui está apenas o fluxo com taxas calculadas.");
-      console.log("Enviar", qty, "do token", tokenMint, "para", wallets, "com taxa para", feeWallet.toBase58());
-    }
-
-    window.connectWallet = connectWallet;
-    window.updateFees = updateFees;
-    window.sendTokens = sendTokens;
+    };
   </script>
-</head>
-<body class="bg-gray-900 text-white min-h-screen p-6">
-  <div class="max-w-3xl mx-auto bg-gray-800 p-6 rounded-2xl shadow-xl">
-    <h1 class="text-2xl font-bold mb-4">🚀 Airdrop TurboTuga</h1>
-    <button onclick="connectWallet()" class="px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700">
-      Conectar Phantom
-    </button>
-    <p class="mt-2">Carteira conectada: <span id="walletAddress" class="font-mono"></span></p>
-
-    <h2 class="mt-6 font-semibold">1. Selecione o Token SPL</h2>
-    <select id="tokenSelect" class="w-full p-2 rounded bg-gray-700"></select>
-
-    <h2 class="mt-6 font-semibold">2. Quantidade de tokens a enviar</h2>
-    <input id="tokenAmount" type="number" placeholder="Ex: 10" class="w-full p-2 rounded bg-gray-700" oninput="updateFees()">
-
-    <h2 class="mt-6 font-semibold">3. Carteiras de destino</h2>
-    <textarea id="wallets" placeholder="Uma carteira por linha" rows="4"
-      class="w-full p-2 rounded bg-gray-700" oninput="updateFees()"></textarea>
-
-    <h2 class="mt-6 font-semibold">4. Custos</h2>
-    <p id="fees" class="text-yellow-400">Taxas aparecerão aqui.</p>
-    <p class="text-sm text-gray-400">⚠️ Será cobrada taxa fixa de 0.00005 SOL por carteira + taxa da rede.</p>
-
-    <button onclick="sendTokens()" class="mt-6 px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700">
-      Enviar Tokens
-    </button>
-  </div>
 </body>
 </html>
