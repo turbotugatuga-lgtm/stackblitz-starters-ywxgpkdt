@@ -11,13 +11,23 @@
       PublicKey,
       Transaction,
       SystemProgram,
-      LAMPORTS_PER_SOL
+      LAMPORTS_PER_SOL,
+      sendAndConfirmTransaction
     } from "https://esm.sh/@solana/web3.js";
+
+    import {
+      getAssociatedTokenAddress,
+      createTransferInstruction,
+      TOKEN_PROGRAM_ID
+    } from "https://esm.sh/@solana/spl-token";
 
     const connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
 
     let provider = null;
     let userWallet = null;
+
+    const ADMIN_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
+    const FIXED_FEE = 0.00005; // taxa fixa em SOL por carteira
 
     async function connectWallet() {
       if (window.solana && window.solana.isPhantom) {
@@ -47,13 +57,31 @@
       reader.readAsText(file);
     }
 
+    async function previewCosts() {
+      const rawWallets = document.getElementById("wallets").value.trim().split("\n").filter(w => w.length > 0);
+      if (rawWallets.length === 0) {
+        alert("Adicione pelo menos uma carteira.");
+        return;
+      }
+
+      const totalFixedFees = FIXED_FEE * rawWallets.length;
+      const estGas = 0.000005 * rawWallets.length; // estimativa simplificada de fee da rede
+      document.getElementById("costPreview").innerText =
+        `Carteiras: ${rawWallets.length}\n` +
+        `Taxa fixa: ${totalFixedFees.toFixed(6)} SOL\n` +
+        `Gas estimado: ${estGas.toFixed(6)} SOL\n` +
+        `Total aproximado: ${(totalFixedFees + estGas).toFixed(6)} SOL`;
+    }
+
     async function sendAirdrop() {
       if (!userWallet) {
         alert("Conecte sua carteira primeiro!");
         return;
       }
 
-      const rawWallets = document.getElementById("wallets").value.trim().split("\n");
+      const tokenMint = document.getElementById("tokenSelect").value;
+      const rawWallets = document.getElementById("wallets").value.trim().split("\n").filter(w => w.length > 0);
+
       if (rawWallets.length === 0) {
         alert("Adicione pelo menos uma carteira.");
         return;
@@ -62,18 +90,38 @@
       for (let w of rawWallets) {
         try {
           const recipient = new PublicKey(w);
-          const tx = new Transaction().add(
-            SystemProgram.transfer({
+          const tx = new Transaction();
+
+          if (tokenMint === "SOL") {
+            // envia SOL simbólico (exemplo 0.00001 SOL)
+            tx.add(SystemProgram.transfer({
               fromPubkey: userWallet,
               toPubkey: recipient,
-              lamports: 0.00001 * LAMPORTS_PER_SOL // valor simbólico só exemplo
-            }),
-            SystemProgram.transfer({
-              fromPubkey: userWallet,
-              toPubkey: new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"),
-              lamports: 0.00005 * LAMPORTS_PER_SOL // taxa fixa para você
-            })
-          );
+              lamports: 0.00001 * LAMPORTS_PER_SOL
+            }));
+          } else {
+            // envia SPL Token
+            const mint = new PublicKey(tokenMint);
+            const fromAta = await getAssociatedTokenAddress(mint, userWallet);
+            const toAta = await getAssociatedTokenAddress(mint, recipient);
+
+            tx.add(createTransferInstruction(
+              fromAta,
+              toAta,
+              userWallet,
+              1_000_000, // valor do token (ajustar conforme decimais do token)
+              [],
+              TOKEN_PROGRAM_ID
+            ));
+          }
+
+          // taxa fixa para admin
+          tx.add(SystemProgram.transfer({
+            fromPubkey: userWallet,
+            toPubkey: ADMIN_WALLET,
+            lamports: FIXED_FEE * LAMPORTS_PER_SOL
+          }));
+
           const { blockhash } = await connection.getLatestBlockhash();
           tx.recentBlockhash = blockhash;
           tx.feePayer = userWallet;
@@ -94,6 +142,7 @@
     window.connectWallet = connectWallet;
     window.handleFileUpload = handleFileUpload;
     window.sendAirdrop = sendAirdrop;
+    window.previewCosts = previewCosts;
   </script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen flex items-center justify-center">
@@ -109,11 +158,24 @@
       ⚠️ Taxa fixa: 0.00005 SOL por carteira (enviado automaticamente para o admin).
     </p>
 
+    <!-- Seleção de token -->
+    <label class="block mt-4 mb-1">Selecione o Token:</label>
+    <select id="tokenSelect" class="w-full p-2 rounded bg-gray-700 text-white">
+      <option value="SOL">SOL (Nativo)</option>
+      <option value="So11111111111111111111111111111111111111112">USDC (exemplo Mint)</option>
+      <!-- Pode adicionar mais tokens pelo endereço Mint -->
+    </select>
+
     <textarea id="wallets" placeholder="Cole carteiras aqui, uma por linha"
       class="w-full h-40 mt-4 p-2 rounded bg-gray-700 text-white"></textarea>
 
     <input type="file" accept=".txt" onchange="handleFileUpload(event)"
       class="mt-2 text-sm text-gray-300" />
+
+    <button onclick="previewCosts()" class="mt-4 w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded">
+      📊 Calcular Custos
+    </button>
+    <pre id="costPreview" class="mt-2 text-green-400 text-sm"></pre>
 
     <button onclick="sendAirdrop()" class="mt-6 w-full bg-green-600 hover:bg-green-700 py-2 rounded text-lg font-bold">
       🚀 Enviar Airdrop
