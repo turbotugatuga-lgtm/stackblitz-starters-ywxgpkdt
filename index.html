@@ -1,171 +1,180 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Airdrop Solana</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<title>Solana Airdrop Devnet</title>
+<script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-900">
-  <div class="max-w-3xl mx-auto p-6">
-    <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop</h1>
+<div class="max-w-3xl mx-auto p-6">
+  <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop (Devnet)</h1>
 
-    <!-- RPC URL -->
-    <div class="mb-4">
-      <label class="block font-medium">RPC URL (private key required for mainnet)</label>
-      <input id="rpcUrl" type="text" class="w-full border rounded p-2"
-             placeholder="https://solana-mainnet.g.alchemy.com/v2/your-api-key" />
-    </div>
+  <!-- Connect Wallet -->
+  <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">
+    Connect Phantom Wallet
+  </button>
+  <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg ml-2 hidden">
+    Disconnect Wallet
+  </button>
+  <p id="walletAddress" class="mt-2 text-sm text-gray-700"></p>
 
-    <!-- Conectar Phantom -->
-    <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">
-      Connect Phantom Wallet
-    </button>
-    <p id="walletAddress" class="mt-2 text-sm text-gray-700"></p>
-
-    <!-- Selecionar token -->
-    <div class="mt-6">
-      <label class="block font-medium">Token:</label>
-      <select id="tokenSelect" class="w-full border rounded p-2">
-        <option>Connect wallet...</option>
-      </select>
-    </div>
-
-    <!-- Quantidade -->
-    <div class="mt-4">
-      <label class="block font-medium">Amount to send:</label>
-      <input id="amountInput" type="number" min="0" step="any" class="w-full border rounded p-2" placeholder="e.g. 10" />
-    </div>
-
-    <!-- Destinatários -->
-    <div class="mt-4">
-      <label class="block font-medium">Recipients:</label>
-      <textarea id="recipients" class="w-full border rounded p-2" rows="3" placeholder="Paste addresses separated by line"></textarea>
-      <input id="fileInput" type="file" accept=".txt" class="mt-2" />
-    </div>
-
-    <!-- Custos -->
-    <div class="mt-4 p-3 border rounded bg-white">
-      <p class="text-sm text-gray-700">💰 Fee: <b>0.00005 SOL per wallet</b></p>
-      <p id="costInfo" class="text-sm text-gray-700 mt-1">Total: -</p>
-    </div>
-
-    <!-- Enviar -->
-    <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">
-      Send Tokens
-    </button>
-
-    <pre id="log" class="mt-6 bg-black text-green-400 p-3 rounded h-60 overflow-y-auto text-xs"></pre>
+  <!-- Select Token -->
+  <div class="mt-6">
+    <label class="block font-medium">Select Token:</label>
+    <select id="tokenSelect" class="w-full border rounded p-2">
+      <option>Connect wallet...</option>
+    </select>
   </div>
 
-  <script type="module">
-    import { Connection, PublicKey, Transaction, SystemProgram, clusterApiUrl } from "https://esm.sh/@solana/web3.js";
-    import * as splToken from "https://esm.sh/@solana/spl-token";
+  <!-- Amount -->
+  <div class="mt-4">
+    <label class="block font-medium">Amount to send:</label>
+    <input id="amountInput" type="number" min="0" step="any" class="w-full border rounded p-2" placeholder="e.g. 10" />
+  </div>
 
-    let wallet = null;
-    let connection = null;
-    const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // sua taxa
+  <!-- Recipients -->
+  <div class="mt-4">
+    <label class="block font-medium">Recipients (paste or upload file):</label>
+    <textarea id="recipients" class="w-full border rounded p-2" rows="3" placeholder="Paste addresses separated by line"></textarea>
+    <input id="fileInput" type="file" accept=".txt" class="mt-2" />
+  </div>
 
-    const logEl = document.getElementById("log");
-    const log = (msg) => { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; };
+  <!-- Fees -->
+  <div class="mt-4 p-3 border rounded bg-white">
+    <p class="text-sm text-gray-700">💰 Fee: <b>0.00005 SOL per wallet</b> (goes to admin wallet)</p>
+    <p id="costInfo" class="text-sm text-gray-700 mt-1">Total: -</p>
+  </div>
 
-    document.getElementById("connectBtn").onclick = async () => {
-      try {
-        const provider = window.solana;
-        if (!provider?.isPhantom) { alert("Install Phantom Wallet"); return; }
+  <!-- Send -->
+  <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">
+    Send Tokens
+  </button>
 
-        const rpcUrl = document.getElementById("rpcUrl").value.trim() || clusterApiUrl("devnet");
-        connection = new Connection(rpcUrl, "confirmed");
+  <pre id="log" class="mt-6 bg-black text-green-400 p-3 rounded h-60 overflow-y-auto text-xs"></pre>
+</div>
 
-        const resp = await provider.connect();
-        wallet = new PublicKey(resp.publicKey.toString());
-        document.getElementById("walletAddress").textContent = "Wallet: " + wallet.toBase58();
-        log("Connected: " + wallet.toBase58());
+<script type="module">
+import { Connection, PublicKey, Transaction, SystemProgram, clusterApiUrl } from "https://esm.sh/@solana/web3.js";
+import * as splToken from "https://esm.sh/@solana/spl-token";
 
-        await loadTokens();
-      } catch(e) { log("Error connecting: " + e.message); }
-    };
+let wallet = null;
+let connection = new Connection(clusterApiUrl("devnet"), "confirmed"); // Devnet RPC
+const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // Admin fee wallet
 
-    async function loadTokens() {
-      const select = document.getElementById("tokenSelect");
-      select.innerHTML = "";
+const logEl = document.getElementById("log");
+const log = msg => { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; };
 
-      try {
-        const solBalance = await connection.getBalance(wallet);
-        const solOption = document.createElement("option");
-        solOption.value = "SOL";
-        solOption.textContent = `SOL — balance: ${(solBalance / 1e9).toFixed(6)}`;
-        select.appendChild(solOption);
+const connectBtn = document.getElementById("connectBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+const walletAddressEl = document.getElementById("walletAddress");
+const tokenSelect = document.getElementById("tokenSelect");
+const amountInput = document.getElementById("amountInput");
+const recipientsEl = document.getElementById("recipients");
+const fileInput = document.getElementById("fileInput");
+const costInfo = document.getElementById("costInfo");
+const sendBtn = document.getElementById("sendBtn");
 
-        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
-          programId: splToken.TOKEN_PROGRAM_ID
-        });
+// Connect Wallet
+connectBtn.onclick = async () => {
+  try {
+    const provider = window.solana;
+    if (!provider?.isPhantom) { alert("Install Phantom Wallet"); return; }
 
-        tokenAccounts.value.forEach(acc => {
-          const info = acc.account.data.parsed.info;
-          const mint = info.mint;
-          const amount = info.tokenAmount?.uiAmount || 0;
-          if (amount > 0) {
-            const option = document.createElement("option");
-            option.value = mint;
-            option.textContent = `${mint} — balance: ${amount}`;
-            select.appendChild(option);
-          }
-        });
-      } catch (e) { log("Error loading tokens: " + e.message); }
-    }
+    const resp = await provider.connect();
+    wallet = new PublicKey(resp.publicKey.toString());
+    walletAddressEl.textContent = "Wallet: " + wallet.toBase58();
+    connectBtn.classList.add("hidden");
+    disconnectBtn.classList.remove("hidden");
 
-    function updateCost() {
-      const recipients = document.getElementById("recipients").value.trim().split(/\n+/).filter(x=>x);
-      const totalFee = recipients.length * 0.00005;
-      document.getElementById("costInfo").textContent = `Wallets: ${recipients.length} | Fee: ${totalFee.toFixed(6)} SOL + network gas`;
-    }
+    await loadTokens();
+  } catch(e) { log("Error connecting: " + e.message); }
+};
 
-    document.getElementById("recipients").addEventListener("input", updateCost);
-    document.getElementById("fileInput").addEventListener("change", async e => {
-      const file = e.target.files[0];
-      const text = await file.text();
-      document.getElementById("recipients").value = text;
-      updateCost();
-    });
+// Disconnect Wallet
+disconnectBtn.onclick = () => {
+  wallet = null;
+  walletAddressEl.textContent = "";
+  tokenSelect.innerHTML = '<option>Connect wallet...</option>';
+  connectBtn.classList.remove("hidden");
+  disconnectBtn.classList.add("hidden");
+  log("Wallet disconnected");
+};
 
-    document.getElementById("sendBtn").onclick = async () => {
-      if (!wallet) { alert("Connect wallet first!"); return; }
+// Load Tokens
+async function loadTokens() {
+  tokenSelect.innerHTML = "";
+  try {
+    const solBalance = await connection.getBalance(wallet);
+    const solOption = document.createElement("option");
+    solOption.value = "SOL";
+    solOption.textContent = `SOL — balance: ${(solBalance / 1e9).toFixed(6)}`;
+    tokenSelect.appendChild(solOption);
 
-      const recipients = document.getElementById("recipients").value.trim().split(/\n+/).filter(x=>x);
-      const amount = parseFloat(document.getElementById("amountInput").value);
-      const token = document.getElementById("tokenSelect").value;
-
-      if (!recipients.length || !amount) { alert("Fill recipients and amount"); return; }
-
-      for (let addr of recipients) {
-        const to = new PublicKey(addr);
-
-        try {
-          if (token === "SOL") {
-            let tx = new Transaction().add(
-              SystemProgram.transfer({ fromPubkey: wallet, toPubkey: to, lamports: amount*1e9 }),
-              SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
-            );
-            let { signature } = await window.solana.signAndSendTransaction(tx);
-            log("Sent SOL to " + addr + " tx: " + signature);
-          } else {
-            const mint = new PublicKey(token);
-            const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
-            const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
-
-            const ix = splToken.createTransferInstruction(fromTokenAcc, toTokenAcc, wallet, amount * 10**6);
-            let tx = new Transaction().add(ix,
-              SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
-            );
-
-            let { signature } = await window.solana.signAndSendTransaction(tx);
-            log("Sent SPL " + token + " to " + addr + " tx: " + signature);
-          }
-        } catch(e) {
-          log("Error sending to " + addr + ": " + e.message);
-        }
+    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, { programId: splToken.TOKEN_PROGRAM_ID });
+    tokenAccounts.value.forEach(acc => {
+      const info = acc.account.data.parsed.info;
+      const mint = info.mint;
+      const amount = info.tokenAmount?.uiAmount || 0;
+      if (amount > 0) {
+        const option = document.createElement("option");
+        option.value = mint;
+        option.textContent = `${mint} — balance: ${amount}`;
+        tokenSelect.appendChild(option);
       }
-    };
-  </script>
+    });
+  } catch(e) { log("Error loading tokens: " + e.message); }
+}
+
+// Update Cost
+function updateCost() {
+  const recipients = recipientsEl.value.trim().split(/\n+/).filter(x=>x);
+  const totalFee = recipients.length * 0.00005;
+  costInfo.textContent = `Wallets: ${recipients.length} | Fee: ${totalFee.toFixed(6)} SOL + network gas`;
+}
+recipientsEl.addEventListener("input", updateCost);
+fileInput.addEventListener("change", async e => {
+  const file = e.target.files[0];
+  const text = await file.text();
+  recipientsEl.value = text;
+  updateCost();
+});
+
+// Send Tokens
+sendBtn.onclick = async () => {
+  if (!wallet) { alert("Connect wallet first!"); return; }
+
+  const recipients = recipientsEl.value.trim().split(/\n+/).filter(x=>x);
+  const amount = parseFloat(amountInput.value);
+  const token = tokenSelect.value;
+
+  if (!recipients.length || !amount) { alert("Fill recipients and amount"); return; }
+
+  for (let addr of recipients) {
+    try {
+      const to = new PublicKey(addr);
+
+      if (token === "SOL") {
+        let tx = new Transaction().add(
+          SystemProgram.transfer({ fromPubkey: wallet, toPubkey: to, lamports: amount*1e9 }),
+          SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
+        );
+        let { signature } = await window.solana.signAndSendTransaction(tx);
+        log("Sent SOL to " + addr + " tx: " + signature);
+      } else {
+        const mint = new PublicKey(token);
+        const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
+        const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
+
+        const ix = splToken.createTransferInstruction(fromTokenAcc, toTokenAcc, wallet, amount * 10**6);
+        let tx = new Transaction().add(ix,
+          SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
+        );
+        let { signature } = await window.solana.signAndSendTransaction(tx);
+        log("Sent SPL " + token + " to " + addr + " tx: " + signature);
+      }
+    } catch(e) { log("Error sending to " + addr + ": " + e.message); }
+  }
+};
+</script>
 </body>
 </html>
