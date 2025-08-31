@@ -71,7 +71,7 @@
 
     function log(msg) {
       const el = document.getElementById("log");
-      el.textContent += msg + "\\n";
+      el.textContent += msg + "\n";
       el.scrollTop = el.scrollHeight;
     }
 
@@ -95,36 +95,41 @@
 
     // carregar tokens
     async function loadTokens() {
-      document.getElementById("tokenSelect").innerHTML = "";
+      const select = document.getElementById("tokenSelect");
+      select.innerHTML = "";
 
-      // saldo SOL
-      const balance = await connection.getBalance(wallet);
-      const solOption = document.createElement("option");
-      solOption.value = "SOL";
-      solOption.textContent = `SOL — saldo: ${(balance / 1e9).toFixed(4)}`;
-      document.getElementById("tokenSelect").appendChild(solOption);
+      try {
+        // saldo SOL
+        const solBalance = await connection.getBalance(wallet);
+        const solOption = document.createElement("option");
+        solOption.value = "SOL";
+        solOption.textContent = `SOL — saldo: ${(solBalance / 1e9).toFixed(6)}`;
+        select.appendChild(solOption);
 
-      // tokens SPL
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
-        programId: splToken.TOKEN_PROGRAM_ID
-      });
+        // SPL tokens
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
+          programId: splToken.TOKEN_PROGRAM_ID
+        });
 
-      tokenAccounts.value.forEach(acc => {
-        const info = acc.account.data.parsed.info;
-        const mint = info.mint;
-        const amount = info.tokenAmount.uiAmount;
-        if (amount > 0) {
-          const option = document.createElement("option");
-          option.value = mint;
-          option.textContent = `${mint} — saldo: ${amount}`;
-          document.getElementById("tokenSelect").appendChild(option);
-        }
-      });
+        tokenAccounts.value.forEach(acc => {
+          const info = acc.account.data.parsed.info;
+          const mint = info.mint;
+          const amount = info.tokenAmount?.uiAmount || 0;
+          if (amount > 0) {
+            const option = document.createElement("option");
+            option.value = mint;
+            option.textContent = `${mint} — saldo: ${amount}`;
+            select.appendChild(option);
+          }
+        });
+      } catch (e) {
+        console.error("Erro ao carregar tokens:", e);
+      }
     }
 
     // calcular custo
     function updateCost() {
-      const recipients = document.getElementById("recipients").value.trim().split(/\\n+/).filter(x => x);
+      const recipients = document.getElementById("recipients").value.trim().split(/\n+/).filter(x => x);
       const totalFee = recipients.length * 0.00005;
       document.getElementById("costInfo").textContent =
         `Carteiras: ${recipients.length} | Taxa fixa: ${totalFee.toFixed(6)} SOL + gas da rede`;
@@ -137,14 +142,14 @@
       updateCost();
     });
 
-    // enviar
+    // enviar tokens
     document.getElementById("sendBtn").onclick = async () => {
       try {
         if (!wallet) {
           alert("Conecte a carteira primeiro!");
           return;
         }
-        const recipients = document.getElementById("recipients").value.trim().split(/\\n+/).filter(x => x);
+        const recipients = document.getElementById("recipients").value.trim().split(/\n+/).filter(x => x);
         const amount = parseFloat(document.getElementById("amountInput").value);
         const token = document.getElementById("tokenSelect").value;
 
@@ -157,7 +162,6 @@
           const to = new PublicKey(addr);
 
           if (token === "SOL") {
-            // enviar SOL
             let tx = new Transaction().add(
               SystemProgram.transfer({
                 fromPubkey: wallet,
@@ -174,7 +178,6 @@
             log("Enviado SOL para " + addr + " tx: " + signature);
 
           } else {
-            // enviar token SPL
             const mint = new PublicKey(token);
             const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
             const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
@@ -183,7 +186,7 @@
               fromTokenAcc,
               toTokenAcc,
               wallet,
-              amount * (10 ** 6) // assumindo decimais=6
+              amount * (10 ** 6) // ajuste de decimais se necessário
             );
 
             let tx = new Transaction().add(ix,
