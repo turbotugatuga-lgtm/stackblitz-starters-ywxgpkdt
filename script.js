@@ -1,21 +1,17 @@
 async function loadTokens() {
-  const select = document.getElementById("tokenSelect");
-  select.innerHTML = "";
-
+  tokenSelect.innerHTML = "";
   try {
-    // saldo SOL
+    // SOL balance
     const solBalance = await connection.getBalance(wallet);
     const solOption = document.createElement("option");
     solOption.value = "SOL";
-    solOption.textContent = `SOL — saldo: ${(solBalance / 1e9).toFixed(6)}`;
-    select.appendChild(solOption);
+    solOption.textContent = `SOL — balance: ${(solBalance / 1e9).toFixed(6)}`;
+    tokenSelect.appendChild(solOption);
 
-    // SPL tokens
+    // SPL Tokens
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
       programId: splToken.TOKEN_PROGRAM_ID
     });
-
-    if (tokenAccounts.value.length === 0) return;
 
     tokenAccounts.value.forEach(acc => {
       const info = acc.account.data.parsed.info;
@@ -24,11 +20,20 @@ async function loadTokens() {
       if (amount > 0) {
         const option = document.createElement("option");
         option.value = mint;
-        option.textContent = `${mint} — saldo: ${amount}`;
-        select.appendChild(option);
+        option.textContent = `${mint} — balance: ${amount}`;
+        tokenSelect.appendChild(option);
       }
     });
-  } catch (e) {
-    console.error("Erro ao carregar tokens:", e);
+
+    if(tokenAccounts.value.length === 0) {
+      const opt = document.createElement("option");
+      opt.textContent = "No SPL tokens found";
+      tokenSelect.appendChild(opt);
+    }
+  } catch(e) {
+    log("Error loading tokens: " + e.message);
+    const opt = document.createElement("option");
+    opt.textContent = "Error loading tokens";
+    tokenSelect.appendChild(opt);
   }
 }
