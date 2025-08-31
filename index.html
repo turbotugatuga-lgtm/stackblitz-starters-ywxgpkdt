@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TurboTuga Premium Airdrop</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 min-h-screen p-6">
+
+<div class="max-w-4xl mx-auto bg-gray-800 p-8 rounded-3xl shadow-xl">
+  <h1 class="text-4xl font-bold text-yellow-400 text-center mb-6">🚀 TurboTuga Airdrop Premium</h1>
+
+  <!-- Wallet Connection -->
+  <div class="flex justify-center gap-4 mb-6">
+    <button id="connectBtn" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded-xl font-semibold">Connect Wallet</button>
+    <button id="disconnectBtn" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-xl font-semibold hidden">Disconnect</button>
+  </div>
+
+  <p class="text-center text-yellow-300 mb-6">Service Fee: 0.00005 SOL per wallet (sent to service)</p>
+
+  <!-- Token Selection & Amount -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+    <div>
+      <label class="block mb-1 font-semibold">Select SPL Token:</label>
+      <select id="tokenSelect" class="w-full p-2 rounded text-black"></select>
+    </div>
+    <div>
+      <label class="block mb-1 font-semibold">Amount per wallet:</label>
+      <input id="amount" type="number" placeholder="Ex: 10" class="w-full p-2 rounded text-black"/>
+    </div>
+  </div>
+
+  <!-- Wallet Input -->
+  <div class="mb-6">
+    <label class="block mb-1 font-semibold">Enter Wallets (one per line):</label>
+    <textarea id="walletTextarea" rows="5" class="w-full p-2 rounded text-black mb-2"></textarea>
+    <label class="block mb-1 font-semibold">Or upload CSV/TXT file:</label>
+    <input id="walletFile" type="file" class="w-full p-2 rounded mb-2 bg-gray-700"/>
+  </div>
+
+  <!-- Summary & Progress -->
+  <div class="mb-6 text-center">
+    <p>Wallets loaded: <span id="walletCount">0</span></p>
+    <p>Total Service Fee: <span id="feeAmount">0</span> SOL</p>
+    <p>Progress: <span id="progress">0</span>/<span id="totalWallets">0</span></p>
+  </div>
+
+  <!-- Send Button -->
+  <button id="sendBtn" class="bg-blue-600 hover:bg-blue-700 w-full py-3 rounded-xl font-semibold mb-6">Send Airdrop</button>
+
+  <!-- Logs Panel -->
+  <div class="bg-black p-4 rounded h-64 overflow-y-scroll text-sm text-gray-300" id="log"></div>
+</div>
+
+<script type="module">
+import { v4 as uuidv4 } from "https://cdn.skypack.dev/uuid";
+import { Connection, clusterApiUrl, PublicKey, SystemProgram, Transaction } from "https://cdn.jsdelivr.net/npm/@solana/web3.js@1.95.3/+esm";
+import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "https://cdn.skypack.dev/@solana/spl-token@0.4.6";
+
+const connection = new Connection(clusterApiUrl("mainnet-beta"), "confirmed");
+const SERVICE_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
+const FEE_PER_WALLET = 0.00005 * 1e9;
+
+let provider = null;
+let userPublicKey = null;
+let loadedWallets = [];
+
+const connectBtn = document.getElementById("connectBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+const walletCountEl = document.getElementById("walletCount");
+const feeAmountEl = document.getElementById("feeAmount");
+const logEl = document.getElementById("log");
+const tokenSelect = document.getElementById("tokenSelect");
+const progressEl = document.getElementById("progress");
+const totalWalletsEl = document.getElementById("totalWallets");
+
+function log(msg) {
+  logEl.innerHTML += msg + "<br/>";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+// Connect / Disconnect
+connectBtn.addEventListener("click", async () => {
+  try {
+    if (window.phantom?.solana?.isPhantom) provider = window.phantom.solana;
+    else if (window.solana?.isPhantom) provider = window.solana;
+    else { alert("Phantom Wallet not found"); return; }
+
+    const resp = await provider.connect();
+    userPublicKey = resp.publicKey;
+    connectBtn.classList.add("hidden");
+    disconnectBtn.classList.remove("hidden");
+    log("✅ Wallet connected: " + userPublicKey.toBase58());
+    await loadUserTokens();
+  } catch(e) { log("❌ Connection failed: " + e.message); }
+});
+
+disconnectBtn.addEventListener("click", async () => {
+  if (provider) {
+    await provider.disconnect();
+    userPublicKey = null;
+    connectBtn.classList.remove("hidden");
+    disconnectBtn.classList.add("hidden");
+    tokenSelect.innerHTML = "";
+    log("🔌 Wallet disconnected");
+  }
+});
+
+// Load SPL tokens
+async function loadUserTokens() {
+  tokenSelect.innerHTML = "";
+  try {
+    const accounts = await connection.getParsedTokenAccountsByOwner(userPublicKey, {programId: TOKEN_PROGRAM_ID});
+    accounts.value.forEach(a => {
+      const mint = a.account.data.parsed.info.mint;
+      const balance = a.account.data.parsed.info.tokenAmount.uiAmount;
+      if (balance > 0) {
+        const option = document.createElement("option");
+        option.value = mint;
+        option.textContent = `${mint} - Balance: ${balance}`;
+        tokenSelect.appendChild(option);
+      }
+    });
+    log(`ℹ️ ${tokenSelect.options.length} token(s) loaded`);
+  } catch(err) { log("❌ Failed to load tokens: " + err.message); }
+}
+
+// Wallet input
+document.getElementById("walletTextarea").addEventListener("input", updateWallets);
+document.getElementById("walletFile").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target.result;
+    loadedWallets = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length>0);
+    refreshSummary();
+    log(`📂 Loaded ${loadedWallets.length} wallets from file`);
+  };
+  reader.readAsText(file);
+});
+
+function updateWallets() {
+  const text = document.getElementById("walletTextarea").value;
+  loadedWallets = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length>0);
+  refreshSummary();
+}
+
+function refreshSummary() {
+  walletCountEl.textContent = loadedWallets.length;
+  feeAmountEl.textContent = (loadedWallets.length * 0.00005).toFixed(6);
+  totalWalletsEl.textContent = loadedWallets.length;
+  progressEl.textContent = 0;
+}
+
+// Pay service fee
+async function payServiceFee() {
+  const totalFee = FEE_PER_WALLET * loadedWallets.length;
+  if (totalFee === 0) throw new Error("No wallets loaded.");
+  log(`🔄 Paying ${(totalFee/1e9).toFixed(6)} SOL service fee...`);
+  const tx = new Transaction().add(SystemProgram.transfer({
+    fromPubkey: userPublicKey,
+    toPubkey: SERVICE_WALLET,
+    lamports: totalFee
+  }));
+  const { signature } = await provider.signAndSendTransaction(tx);
+  await connection.confirmTransaction(signature, "confirmed");
+  log("✅ Service fee paid");
+}
+
+// Send tokens
+async function sendTokens() {
+  const mintAddress = tokenSelect.value;
+  const amountUi = parseFloat(document.getElementById("amount").value);
+  if (!mintAddress || isNaN(amountUi)) { alert("Select token and amount"); return; }
+  const mintPubkey = new PublicKey(mintAddress);
+
+  for (let i = 0; i < loadedWallets.length; i++) {
+    const wallet = loadedWallets[i];
+    try {
+      const recipient = new PublicKey(wallet);
+      const fromAta = await getAssociatedTokenAddress(mintPubkey, userPublicKey);
+      const toAta = await getAssociatedTokenAddress(mintPubkey, recipient);
+      const tx = new Transaction().add(createTransferInstruction(fromAta, toAta, userPublicKey, amountUi * 10**0));
+      const { signature } = await provider.signAndSendTransaction(tx);
+      await connection.confirmTransaction(signature, "confirmed");
+      log(`✅ Sent ${amountUi} tokens to ${wallet}`);
+    } catch(err) {
+      log(`❌ Failed for ${wallet}: ${err.message}`);
+    }
+    progressEl.textContent = i + 1;
+  }
+}
+
+// Send button
+document.getElementById("sendBtn").addEventListener("click", async () => {
+  if (!userPublicKey) { alert("Connect wallet first"); return; }
+  if (loadedWallets.length === 0) { alert("No wallets loaded"); return; }
+  try {
+    await payServiceFee();
+    await sendTokens();
+    log("🎉 Airdrop completed!");
+  } catch(err) { log("❌ Error: " + err.message); }
+});
+</script>
+</body>
+</html>
+
+
