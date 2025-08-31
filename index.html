@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Solana Airdrop Devnet</title>
+<title>Solana Airdrop Mainnet</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-900">
 <div class="max-w-3xl mx-auto p-6">
-  <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop (Devnet)</h1>
+  <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop (Mainnet)</h1>
 
   <!-- Connect Wallet -->
   <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">
@@ -54,11 +54,11 @@
 </div>
 
 <script type="module">
-import { Connection, PublicKey, Transaction, SystemProgram, clusterApiUrl } from "https://esm.sh/@solana/web3.js";
+import { Connection, PublicKey, Transaction, SystemProgram } from "https://esm.sh/@solana/web3.js";
 import * as splToken from "https://esm.sh/@solana/spl-token";
 
 let wallet = null;
-let connection = new Connection("https://api.devnet.solana.com", "confirmed"); // Devnet RPC
+const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed"); // Mainnet RPC
 const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // Admin fee wallet
 
 const logEl = document.getElementById("log");
@@ -79,13 +79,11 @@ connectBtn.onclick = async () => {
   try {
     const provider = window.solana;
     if (!provider?.isPhantom) { alert("Install Phantom Wallet"); return; }
-
     const resp = await provider.connect();
     wallet = new PublicKey(resp.publicKey.toString());
     walletAddressEl.textContent = "Wallet: " + wallet.toBase58();
     connectBtn.classList.add("hidden");
     disconnectBtn.classList.remove("hidden");
-
     await loadTokens();
   } catch(e) { log("Error connecting: " + e.message); }
 };
@@ -104,14 +102,12 @@ disconnectBtn.onclick = () => {
 async function loadTokens() {
   tokenSelect.innerHTML = "";
   try {
-    // SOL balance
     const solBalance = await connection.getBalance(wallet);
     const solOption = document.createElement("option");
     solOption.value = "SOL";
     solOption.textContent = `SOL — balance: ${(solBalance / 1e9).toFixed(6)}`;
     tokenSelect.appendChild(solOption);
 
-    // SPL Tokens
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
       programId: splToken.TOKEN_PROGRAM_ID
     });
@@ -170,11 +166,11 @@ sendBtn.onclick = async () => {
       const to = new PublicKey(addr);
 
       if (token === "SOL") {
-        let tx = new Transaction().add(
+        const tx = new Transaction().add(
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: to, lamports: amount*1e9 }),
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
         );
-        let { signature } = await window.solana.signAndSendTransaction(tx);
+        const { signature } = await window.solana.signAndSendTransaction(tx);
         log("Sent SOL to " + addr + " tx: " + signature);
       } else {
         const mint = new PublicKey(token);
@@ -182,10 +178,10 @@ sendBtn.onclick = async () => {
         const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
 
         const ix = splToken.createTransferInstruction(fromTokenAcc, toTokenAcc, wallet, amount * 10**6);
-        let tx = new Transaction().add(ix,
+        const tx = new Transaction().add(ix,
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
         );
-        let { signature } = await window.solana.signAndSendTransaction(tx);
+        const { signature } = await window.solana.signAndSendTransaction(tx);
         log("Sent SPL " + token + " to " + addr + " tx: " + signature);
       }
     } catch(e) { log("Error sending to " + addr + ": " + e.message); }
