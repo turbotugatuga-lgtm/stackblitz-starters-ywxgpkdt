@@ -2,49 +2,52 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Solana Airdrop Mainnet</title>
+<title>Solana Airdrop Premium</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 text-gray-900">
-<div class="max-w-3xl mx-auto p-6">
-  <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop (Mainnet)</h1>
+<body class="bg-gray-900 text-white">
+<div class="max-w-4xl mx-auto p-6">
+  <h1 class="text-3xl font-bold mb-4 text-purple-400">🚀 Solana Airdrop Premium</h1>
 
   <!-- Wallet Connect -->
-  <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">Connect Phantom Wallet</button>
-  <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg ml-2 hidden">Disconnect Wallet</button>
-  <p id="walletAddress" class="mt-2 text-sm text-gray-700"></p>
+  <div class="flex items-center gap-2 mb-4">
+    <button id="connectBtn" class="px-4 py-2 bg-purple-600 rounded-lg hover:bg-purple-700">Connect Phantom Wallet</button>
+    <button id="disconnectBtn" class="px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 hidden">Disconnect Wallet</button>
+    <span id="walletAddress" class="ml-4"></span>
+  </div>
 
   <!-- Token Select -->
-  <div class="mt-6">
-    <label class="block font-medium">Select Token:</label>
-    <select id="tokenSelect" class="w-full border rounded p-2">
+  <div class="mb-4">
+    <label class="block font-medium mb-1">Select Token:</label>
+    <select id="tokenSelect" class="w-full border border-gray-700 rounded p-2 bg-gray-800 text-white">
       <option>Connect wallet...</option>
     </select>
   </div>
 
   <!-- Amount -->
-  <div class="mt-4">
-    <label class="block font-medium">Amount to send:</label>
-    <input id="amountInput" type="number" min="0" step="any" class="w-full border rounded p-2" placeholder="e.g. 10" />
+  <div class="mb-4">
+    <label class="block font-medium mb-1">Amount to send:</label>
+    <input id="amountInput" type="number" min="0" step="any" class="w-full border border-gray-700 rounded p-2 bg-gray-800 text-white" placeholder="e.g. 10" />
   </div>
 
   <!-- Recipients -->
-  <div class="mt-4">
-    <label class="block font-medium">Recipients (paste or upload file):</label>
-    <textarea id="recipients" class="w-full border rounded p-2" rows="3" placeholder="Paste addresses separated by line"></textarea>
-    <input id="fileInput" type="file" accept=".txt" class="mt-2" />
+  <div class="mb-4">
+    <label class="block font-medium mb-1">Recipients (paste or upload .txt file):</label>
+    <textarea id="recipients" class="w-full border border-gray-700 rounded p-2 bg-gray-800 text-white" rows="4" placeholder="Paste addresses separated by line"></textarea>
+    <input id="fileInput" type="file" accept=".txt" class="mt-2 p-1 bg-gray-700 rounded" />
   </div>
 
   <!-- Fees -->
-  <div class="mt-4 p-3 border rounded bg-white">
-    <p class="text-sm text-gray-700">💰 Service Fee: <b>0.00005 SOL per wallet</b> (goes to admin wallet)</p>
-    <p id="costInfo" class="text-sm text-gray-700 mt-1">Total: -</p>
+  <div class="mb-4 p-3 border border-gray-700 rounded bg-gray-800">
+    <p>💰 Service Fee: <b>0.00005 SOL per wallet</b> (goes to admin)</p>
+    <p id="costInfo" class="mt-1">Total cost: -</p>
   </div>
 
   <!-- Send Button -->
-  <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">Send Tokens</button>
+  <button id="sendBtn" class="w-full px-4 py-2 bg-green-600 rounded-lg hover:bg-green-700 mb-4">Send Tokens</button>
 
-  <pre id="log" class="mt-6 bg-black text-green-400 p-3 rounded h-60 overflow-y-auto text-xs"></pre>
+  <!-- Logs -->
+  <pre id="log" class="bg-black text-green-400 p-3 rounded h-64 overflow-y-auto text-sm"></pre>
 </div>
 
 <script type="module">
@@ -52,12 +55,9 @@ import { Connection, PublicKey, Transaction, SystemProgram } from "https://esm.s
 import * as splToken from "https://esm.sh/@solana/spl-token@0.4.6";
 
 let wallet = null;
-const rpcUrl = "https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"; // Substitua pela sua chave Alchemy ou QuickNode
+const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
+const rpcUrl = "https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"; // Coloque sua chave RPC confiável
 const connection = new Connection(rpcUrl, "confirmed");
-const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // admin wallet
-
-const logEl = document.getElementById("log");
-const log = msg => { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; };
 
 const connectBtn = document.getElementById("connectBtn");
 const disconnectBtn = document.getElementById("disconnectBtn");
@@ -68,6 +68,8 @@ const recipientsEl = document.getElementById("recipients");
 const fileInput = document.getElementById("fileInput");
 const costInfo = document.getElementById("costInfo");
 const sendBtn = document.getElementById("sendBtn");
+const logEl = document.getElementById("log");
+const log = msg => { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; };
 
 // Connect Wallet
 connectBtn.onclick = async () => {
@@ -76,11 +78,11 @@ connectBtn.onclick = async () => {
     if (!provider?.isPhantom) { alert("Install Phantom Wallet"); return; }
     const resp = await provider.connect();
     wallet = new PublicKey(resp.publicKey.toString());
-    walletAddressEl.textContent = "Wallet: " + wallet.toBase58();
+    walletAddressEl.textContent = wallet.toBase58();
     connectBtn.classList.add("hidden");
     disconnectBtn.classList.remove("hidden");
     await loadTokens();
-  } catch(e) { log("Error connecting: " + e.message); }
+  } catch(e) { log("Connect error: " + e.message); }
 };
 
 // Disconnect Wallet
@@ -119,7 +121,7 @@ async function loadTokens() {
       }
     });
 
-    if(tokenAccounts.value.length === 0) {
+    if(tokenAccounts.value.length === 0){
       const opt = document.createElement("option");
       opt.textContent = "No SPL tokens found";
       tokenSelect.appendChild(opt);
@@ -132,7 +134,7 @@ async function loadTokens() {
   }
 }
 
-// Update Cost
+// Update cost
 function updateCost() {
   const recipients = recipientsEl.value.trim().split(/\n+/).filter(x=>x);
   const totalFee = recipients.length * 0.00005;
@@ -140,8 +142,7 @@ function updateCost() {
 }
 recipientsEl.addEventListener("input", updateCost);
 fileInput.addEventListener("change", async e => {
-  const file = e.target.files[0];
-  const text = await file.text();
+  const text = await e.target.files[0].text();
   recipientsEl.value = text;
   updateCost();
 });
@@ -166,7 +167,7 @@ sendBtn.onclick = async () => {
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
         );
         const { signature } = await window.solana.signAndSendTransaction(tx);
-        log("Sent SOL to " + addr + " tx: " + signature);
+        log(`Sent SOL to ${addr}, tx: ${signature}`);
       } else {
         const mint = new PublicKey(token);
         const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
@@ -177,9 +178,9 @@ sendBtn.onclick = async () => {
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
         );
         const { signature } = await window.solana.signAndSendTransaction(tx);
-        log("Sent SPL " + token + " to " + addr + " tx: " + signature);
+        log(`Sent SPL ${token} to ${addr}, tx: ${signature}`);
       }
-    } catch(e) { log("Error sending to " + addr + ": " + e.message); }
+    } catch(e) { log(`Error sending to ${addr}: ${e.message}`); }
   }
 };
 </script>
