@@ -9,16 +9,12 @@
 <div class="max-w-3xl mx-auto p-6">
   <h1 class="text-2xl font-bold mb-4">🚀 Solana Airdrop (Mainnet)</h1>
 
-  <!-- Connect Wallet -->
-  <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">
-    Connect Phantom Wallet
-  </button>
-  <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg ml-2 hidden">
-    Disconnect Wallet
-  </button>
+  <!-- Wallet Connect -->
+  <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded-lg">Connect Phantom Wallet</button>
+  <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded-lg ml-2 hidden">Disconnect Wallet</button>
   <p id="walletAddress" class="mt-2 text-sm text-gray-700"></p>
 
-  <!-- Select Token -->
+  <!-- Token Select -->
   <div class="mt-6">
     <label class="block font-medium">Select Token:</label>
     <select id="tokenSelect" class="w-full border rounded p-2">
@@ -41,25 +37,24 @@
 
   <!-- Fees -->
   <div class="mt-4 p-3 border rounded bg-white">
-    <p class="text-sm text-gray-700">💰 Fee: <b>0.00005 SOL per wallet</b> (goes to admin wallet)</p>
+    <p class="text-sm text-gray-700">💰 Service Fee: <b>0.00005 SOL per wallet</b> (goes to admin wallet)</p>
     <p id="costInfo" class="text-sm text-gray-700 mt-1">Total: -</p>
   </div>
 
-  <!-- Send -->
-  <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">
-    Send Tokens
-  </button>
+  <!-- Send Button -->
+  <button id="sendBtn" class="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg">Send Tokens</button>
 
   <pre id="log" class="mt-6 bg-black text-green-400 p-3 rounded h-60 overflow-y-auto text-xs"></pre>
 </div>
 
 <script type="module">
-import { Connection, PublicKey, Transaction, SystemProgram } from "https://esm.sh/@solana/web3.js";
-import * as splToken from "https://esm.sh/@solana/spl-token";
+import { Connection, PublicKey, Transaction, SystemProgram } from "https://esm.sh/@solana/web3.js@1.95.4";
+import * as splToken from "https://esm.sh/@solana/spl-token@0.4.6";
 
 let wallet = null;
-const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed"); // Mainnet RPC
-const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // Admin fee wallet
+const rpcUrl = "https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"; // Substitua pela sua chave Alchemy ou QuickNode
+const connection = new Connection(rpcUrl, "confirmed");
+const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b"); // admin wallet
 
 const logEl = document.getElementById("log");
 const log = msg => { logEl.textContent += msg + "\n"; logEl.scrollTop = logEl.scrollHeight; };
