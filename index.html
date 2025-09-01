@@ -14,37 +14,37 @@
     Conectar Phantom
   </button>
 
-  <!-- Exibir carteira -->
-  <div id="walletInfo" class="mb-6 hidden">
-    <p><strong>Carteira:</strong> <span id="walletAddress"></span></p>
-    <p><strong>SOL:</strong> <span id="solBalance"></span></p>
-  </div>
+  <!-- Info da carteira -->
+  <div id="appContent" class="hidden w-full max-w-lg space-y-6">
+    <div class="bg-white p-4 shadow rounded">
+      <p><strong>Carteira:</strong> <span id="walletAddress"></span></p>
+      <p><strong>SOL:</strong> <span id="solBalance"></span></p>
+    </div>
 
-  <!-- Tokens -->
-  <div id="tokensSection" class="hidden w-full max-w-lg bg-white shadow rounded p-4">
-    <h2 class="font-semibold mb-2">Tokens da carteira:</h2>
-    <ul id="tokenList" class="space-y-2"></ul>
-  </div>
+    <div class="bg-white p-4 shadow rounded">
+      <h2 class="font-semibold mb-2">Tokens SPL:</h2>
+      <ul id="tokenList" class="space-y-2"></ul>
+    </div>
 
-  <!-- Envio -->
-  <div id="sendSection" class="hidden w-full max-w-lg bg-white shadow rounded p-4 mt-6">
-    <h2 class="font-semibold mb-2">Enviar Token</h2>
-    <label class="block mb-2">Endereço de destino:</label>
-    <input id="destino" type="text" class="w-full border rounded p-2 mb-3">
+    <div class="bg-white p-4 shadow rounded">
+      <h2 class="font-semibold mb-2">Enviar Token</h2>
+      <label class="block mb-2">Endereço de destino:</label>
+      <input id="destino" type="text" class="w-full border rounded p-2 mb-3">
 
-    <label class="block mb-2">Quantidade:</label>
-    <input id="quantidade" type="number" class="w-full border rounded p-2 mb-3">
+      <label class="block mb-2">Quantidade:</label>
+      <input id="quantidade" type="number" class="w-full border rounded p-2 mb-3">
 
-    <label class="block mb-2">Selecionar Token:</label>
-    <select id="tokenSelect" class="w-full border rounded p-2 mb-3"></select>
+      <label class="block mb-2">Selecionar Token:</label>
+      <select id="tokenSelect" class="w-full border rounded p-2 mb-3"></select>
 
-    <p class="text-sm text-gray-600 mb-3">
-      Taxa fixa: <strong>0.00005 SOL</strong> (enviada para admin) + taxa da rede
-    </p>
+      <p class="text-sm text-gray-600 mb-3">
+        Taxa fixa: <strong>0.00005 SOL</strong> + taxa da rede
+      </p>
 
-    <button id="sendBtn" class="px-6 py-2 bg-green-600 text-white rounded">
-      Enviar
-    </button>
+      <button id="sendBtn" class="px-6 py-2 bg-green-600 text-white rounded">
+        Enviar
+      </button>
+    </div>
   </div>
 
   <script type="module">
@@ -63,7 +63,7 @@
       TOKEN_PROGRAM_ID
     } from "https://esm.sh/@solana/spl-token";
 
-    // sua API key da Helius
+    // RPC da Helius (coloque sua API key)
     const HELIUS_API_KEY = "DQTIx_O7s4BONKlPJ7FWu";
     const RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
     const connection = new Connection(RPC);
@@ -72,19 +72,17 @@
     const ADMIN_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
 
     let walletPublicKey = null;
-    let tokensMap = {}; // armazenar balances e decimals
+    let tokensMap = {};
 
     const connectBtn = document.getElementById("connectBtn");
-    const walletInfo = document.getElementById("walletInfo");
+    const appContent = document.getElementById("appContent");
     const walletAddress = document.getElementById("walletAddress");
     const solBalance = document.getElementById("solBalance");
-    const tokensSection = document.getElementById("tokensSection");
     const tokenList = document.getElementById("tokenList");
     const tokenSelect = document.getElementById("tokenSelect");
-    const sendSection = document.getElementById("sendSection");
     const sendBtn = document.getElementById("sendBtn");
 
-    // conectar phantom
+    // conectar Phantom
     connectBtn.onclick = async () => {
       if (!window.solana || !window.solana.isPhantom) {
         alert("Instale a Phantom Wallet!");
@@ -94,25 +92,21 @@
         const resp = await window.solana.connect();
         walletPublicKey = new PublicKey(resp.publicKey.toString());
         walletAddress.textContent = walletPublicKey.toBase58();
-        walletInfo.classList.remove("hidden");
+
+        appContent.classList.remove("hidden"); // agora mostra tudo
 
         await loadBalance();
         await loadTokens();
-
-        tokensSection.classList.remove("hidden");
-        sendSection.classList.remove("hidden");
       } catch (e) {
         console.error("Erro ao conectar:", e);
       }
     };
 
-    // saldo sol
     async function loadBalance() {
       const balance = await connection.getBalance(walletPublicKey);
       solBalance.textContent = (balance / LAMPORTS_PER_SOL).toFixed(4);
     }
 
-    // tokens spl
     async function loadTokens() {
       try {
         const response = await fetch(RPC, {
@@ -135,12 +129,11 @@
         tokenSelect.innerHTML = "";
 
         // opção SOL
+        tokensMap = { SOL: { decimals: 9, amount: parseFloat(solBalance.textContent) } };
         const solOption = document.createElement("option");
         solOption.value = "SOL";
         solOption.textContent = "SOL";
         tokenSelect.appendChild(solOption);
-
-        tokensMap = { SOL: { decimals: 9, amount: parseFloat(solBalance.textContent) } };
 
         if (data.result && data.result.value.length > 0) {
           data.result.value.forEach((acc) => {
@@ -169,70 +162,6 @@
         console.error("Erro ao carregar tokens:", err);
       }
     }
-
-    // enviar
-    sendBtn.onclick = async () => {
-      try {
-        const destino = document.getElementById("destino").value;
-        const quantidade = parseFloat(document.getElementById("quantidade").value);
-        const tokenMint = tokenSelect.value;
-
-        if (!destino || isNaN(quantidade)) {
-          alert("Preencha destino e quantidade!");
-          return;
-        }
-
-        const instructions = [];
-
-        // taxa fixa para admin
-        instructions.push(SystemProgram.transfer({
-          fromPubkey: walletPublicKey,
-          toPubkey: ADMIN_WALLET,
-          lamports: 0.00005 * LAMPORTS_PER_SOL
-        }));
-
-        if (tokenMint === "SOL") {
-          // envio de SOL
-          instructions.push(SystemProgram.transfer({
-            fromPubkey: walletPublicKey,
-            toPubkey: new PublicKey(destino),
-            lamports: quantidade * LAMPORTS_PER_SOL
-          }));
-        } else {
-          // envio SPL Token
-          const mintPubkey = new PublicKey(tokenMint);
-          const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPublicKey);
-          const toAta = await getAssociatedTokenAddress(mintPubkey, new PublicKey(destino));
-
-          const decimals = tokensMap[tokenMint].decimals;
-          const amount = BigInt(Math.floor(quantidade * (10 ** decimals)));
-
-          instructions.push(
-            createTransferInstruction(
-              fromAta,
-              toAta,
-              walletPublicKey,
-              amount,
-              [],
-              TOKEN_PROGRAM_ID
-            )
-          );
-        }
-
-        const tx = new Transaction().add(...instructions);
-        tx.feePayer = walletPublicKey;
-        tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-
-        const signed = await window.solana.signTransaction(tx);
-        const sig = await connection.sendRawTransaction(signed.serialize());
-        await connection.confirmTransaction(sig);
-
-        alert("Transação enviada: " + sig);
-      } catch (err) {
-        console.error("Erro ao enviar:", err);
-        alert("Erro ao enviar tokens!");
-      }
-    };
   </script>
 </body>
 </html>
