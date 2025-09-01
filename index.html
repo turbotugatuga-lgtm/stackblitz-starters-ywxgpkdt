@@ -57,6 +57,12 @@
       Transaction
     } from "https://esm.sh/@solana/web3.js";
 
+    import {
+      getAssociatedTokenAddress,
+      createTransferInstruction,
+      TOKEN_PROGRAM_ID
+    } from "https://esm.sh/@solana/spl-token";
+
     // sua API key da Helius
     const HELIUS_API_KEY = "DQTIx_O7s4BONKlPJ7FWu";
     const RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
@@ -66,6 +72,7 @@
     const ADMIN_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
 
     let walletPublicKey = null;
+    let tokensMap = {}; // armazenar balances e decimals
 
     const connectBtn = document.getElementById("connectBtn");
     const walletInfo = document.getElementById("walletInfo");
@@ -127,11 +134,22 @@
         tokenList.innerHTML = "";
         tokenSelect.innerHTML = "";
 
+        // opção SOL
+        const solOption = document.createElement("option");
+        solOption.value = "SOL";
+        solOption.textContent = "SOL";
+        tokenSelect.appendChild(solOption);
+
+        tokensMap = { SOL: { decimals: 9, amount: parseFloat(solBalance.textContent) } };
+
         if (data.result && data.result.value.length > 0) {
           data.result.value.forEach((acc) => {
             const info = acc.account.data.parsed.info;
             const mint = info.mint;
-            const amount = info.tokenAmount.uiAmount;
+            const amount = parseFloat(info.tokenAmount.uiAmount);
+            const decimals = info.tokenAmount.decimals;
+
+            tokensMap[mint] = { decimals, amount };
 
             const li = document.createElement("li");
             li.textContent = `Mint: ${mint} | Qtde: ${amount}`;
@@ -144,7 +162,7 @@
           });
         } else {
           const li = document.createElement("li");
-          li.textContent = "Nenhum token encontrado.";
+          li.textContent = "Nenhum token SPL encontrado.";
           tokenList.appendChild(li);
         }
       } catch (err) {
@@ -152,11 +170,13 @@
       }
     }
 
-    // enviar sol (exemplo simples, só SOL)
+    // enviar
     sendBtn.onclick = async () => {
       try {
         const destino = document.getElementById("destino").value;
         const quantidade = parseFloat(document.getElementById("quantidade").value);
+        const tokenMint = tokenSelect.value;
+
         if (!destino || isNaN(quantidade)) {
           alert("Preencha destino e quantidade!");
           return;
@@ -171,12 +191,33 @@
           lamports: 0.00005 * LAMPORTS_PER_SOL
         }));
 
-        // envio principal (aqui configurado apenas para SOL)
-        instructions.push(SystemProgram.transfer({
-          fromPubkey: walletPublicKey,
-          toPubkey: new PublicKey(destino),
-          lamports: quantidade * LAMPORTS_PER_SOL
-        }));
+        if (tokenMint === "SOL") {
+          // envio de SOL
+          instructions.push(SystemProgram.transfer({
+            fromPubkey: walletPublicKey,
+            toPubkey: new PublicKey(destino),
+            lamports: quantidade * LAMPORTS_PER_SOL
+          }));
+        } else {
+          // envio SPL Token
+          const mintPubkey = new PublicKey(tokenMint);
+          const fromAta = await getAssociatedTokenAddress(mintPubkey, walletPublicKey);
+          const toAta = await getAssociatedTokenAddress(mintPubkey, new PublicKey(destino));
+
+          const decimals = tokensMap[tokenMint].decimals;
+          const amount = BigInt(Math.floor(quantidade * (10 ** decimals)));
+
+          instructions.push(
+            createTransferInstruction(
+              fromAta,
+              toAta,
+              walletPublicKey,
+              amount,
+              [],
+              TOKEN_PROGRAM_ID
+            )
+          );
+        }
 
         const tx = new Transaction().add(...instructions);
         tx.feePayer = walletPublicKey;
