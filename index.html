@@ -56,7 +56,7 @@ import * as splToken from "https://esm.sh/@solana/spl-token@0.4.6";
 
 let wallet = null;
 const feeWallet = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
-const rpcUrl = "https://solana-mainnet.g.alchemy.com/v2/YOUR_API_KEY"; // Coloque sua chave RPC confiável
+const rpcUrl = "https://solana-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_KEY"; 
 const connection = new Connection(rpcUrl, "confirmed");
 
 const connectBtn = document.getElementById("connectBtn");
@@ -99,12 +99,14 @@ disconnectBtn.onclick = () => {
 async function loadTokens() {
   tokenSelect.innerHTML = "";
   try {
+    // SOL
     const solBalance = await connection.getBalance(wallet);
     const solOption = document.createElement("option");
     solOption.value = "SOL";
     solOption.textContent = `SOL — balance: ${(solBalance / 1e9).toFixed(6)}`;
     tokenSelect.appendChild(solOption);
 
+    // SPL Tokens
     const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet, {
       programId: splToken.TOKEN_PROGRAM_ID
     });
@@ -172,7 +174,6 @@ sendBtn.onclick = async () => {
         const mint = new PublicKey(token);
         const fromTokenAcc = await splToken.getAssociatedTokenAddress(mint, wallet);
         const toTokenAcc = await splToken.getAssociatedTokenAddress(mint, to);
-
         const ix = splToken.createTransferInstruction(fromTokenAcc, toTokenAcc, wallet, amount * 10**6);
         const tx = new Transaction().add(ix,
           SystemProgram.transfer({ fromPubkey: wallet, toPubkey: feeWallet, lamports: 0.00005*1e9 })
