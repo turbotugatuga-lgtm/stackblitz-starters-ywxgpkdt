@@ -9,18 +9,18 @@
 <body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
 <h1 class="text-3xl font-bold mb-6">Solana Mass Send DApp</h1>
 
-<button id="connectBtn" class="px-6 py-2 bg-purple-600 text-white rounded mb-4">Connect Phantom</button>
-<p id="statusMsg" class="text-red-600 mb-4"></p>
+<div class="w-full max-w-3xl space-y-6">
 
-<div id="appContent" class="w-full max-w-3xl space-y-6 hidden">
-
-  <!-- Wallet Info -->
-  <div class="bg-white p-4 shadow rounded flex justify-between items-center">
+  <!-- Wallet Connect -->
+  <div class="flex justify-between items-center bg-white p-4 shadow rounded">
     <div>
-      <p><strong>Wallet:</strong> <span id="walletAddress"></span></p>
-      <p><strong>SOL Balance:</strong> <span id="solBalance"></span></p>
+      <p><strong>Wallet:</strong> <span id="walletAddress">Not connected</span></p>
+      <p><strong>SOL Balance:</strong> <span id="solBalance">-</span></p>
     </div>
-    <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded">Disconnect</button>
+    <div class="space-x-2">
+      <button id="connectBtn" class="px-4 py-2 bg-purple-600 text-white rounded">Connect Phantom</button>
+      <button id="disconnectBtn" class="px-4 py-2 bg-red-600 text-white rounded">Disconnect</button>
+    </div>
   </div>
 
   <!-- Token List -->
@@ -41,6 +41,7 @@
   </div>
 
   <div id="log" class="bg-gray-200 p-2 rounded text-sm h-32 overflow-y-auto"></div>
+
 </div>
 
 <script type="module">
@@ -49,8 +50,7 @@ import {
   PublicKey,
   Transaction,
   SystemProgram,
-  LAMPORTS_PER_SOL,
-  sendAndConfirmTransaction
+  LAMPORTS_PER_SOL
 } from "https://esm.sh/@solana/web3.js";
 import {
   getAssociatedTokenAddress,
@@ -71,8 +71,6 @@ let tokensCache = [];
 
 const connectBtn = document.getElementById("connectBtn");
 const disconnectBtn = document.getElementById("disconnectBtn");
-const statusMsg = document.getElementById("statusMsg");
-const appContent = document.getElementById("appContent");
 const walletAddress = document.getElementById("walletAddress");
 const solBalance = document.getElementById("solBalance");
 const tokenList = document.getElementById("tokenList");
@@ -92,34 +90,29 @@ disconnectBtn.onclick = () => disconnectWallet();
 
 async function connectWallet() {
   if (!window.solana || !window.solana.isPhantom) {
-    statusMsg.textContent = "Phantom wallet not detected!";
+    alert("Phantom wallet not detected!");
     return;
   }
   try {
     const resp = await window.solana.connect();
     walletPublicKey = new PublicKey(resp.publicKey.toString());
     walletAddress.textContent = walletPublicKey.toBase58();
-    appContent.classList.remove("hidden");
-    statusMsg.textContent = "";
     await loadBalance();
     await loadTokens();
     updateFeeEstimate();
-  } catch(e) {
-    statusMsg.textContent = "Error connecting wallet: "+e.message;
-  }
+  } catch(e) { console.error(e); alert("Error connecting wallet: "+e.message); }
 }
 
 function disconnectWallet() {
   walletPublicKey = null;
-  walletAddress.textContent = "";
-  solBalance.textContent = "";
+  walletAddress.textContent = "Not connected";
+  solBalance.textContent = "-";
   tokenList.innerHTML = "";
   tokenSelect.innerHTML = "";
-  appContent.classList.add("hidden");
-  statusMsg.textContent = "Wallet disconnected.";
 }
 
 async function loadBalance() {
+  if(!walletPublicKey) return;
   try {
     const balance = await connection.getBalance(walletPublicKey);
     solBalance.textContent = (balance/LAMPORTS_PER_SOL).toFixed(4);
@@ -127,35 +120,38 @@ async function loadBalance() {
 }
 
 async function loadTokens() {
+  if(!walletPublicKey) return;
   try {
     const accounts = await connection.getParsedTokenAccountsByOwner(walletPublicKey, {programId: TOKEN_PROGRAM_ID});
-    tokensCache = accounts.value.map(acc=>{
-      const info = acc.account.data.parsed.info;
-      return {mint: info.mint, amount: info.tokenAmount.uiAmount};
-    });
+    tokensCache = accounts.value
+      .map(acc => {
+        const info = acc.account.data.parsed.info;
+        return {mint: info.mint, amount: info.tokenAmount.uiAmount};
+      })
+      .filter(t => t.amount > 0);
     tokenList.innerHTML = "";
     tokenSelect.innerHTML = "";
     if(tokensCache.length===0){ tokenList.innerHTML="<li>No SPL tokens found.</li>"; return; }
-    tokensCache.forEach(t=>{
+    tokensCache.forEach(t => {
       const li = document.createElement("li");
-      li.textContent=`Mint: ${t.mint} | Amount: ${t.amount}`;
+      li.textContent = `Mint: ${t.mint} | Amount: ${t.amount}`;
       tokenList.appendChild(li);
       const opt = document.createElement("option");
       opt.value = t.mint;
-      opt.textContent=`${t.mint} (${t.amount})`;
+      opt.textContent = `${t.mint} (${t.amount})`;
       tokenSelect.appendChild(opt);
     });
-  } catch(err){ console.error(err); statusMsg.textContent="Error loading tokens."; }
+  } catch(err){ console.error(err); alert("Error loading tokens."); }
 }
 
-function updateFeeEstimate(){
+function updateFeeEstimate() {
   const count = recipientList.value.split("\n").filter(x=>x.trim()!=="").length || 1;
   feeEstimate.textContent = (SERVICE_FEE_PER_WALLET*count).toFixed(6);
 }
 
 recipientList.oninput = updateFeeEstimate;
 
-uploadFile.onchange = async (e)=>{
+uploadFile.onchange = async (e) => {
   const file = e.target.files[0];
   if(!file) return;
   const text = await file.text();
@@ -163,17 +159,17 @@ uploadFile.onchange = async (e)=>{
   updateFeeEstimate();
 }
 
-sendBtn.onclick = async ()=>{
+sendBtn.onclick = async () => {
   const recipients = recipientList.value.split("\n").map(x=>x.trim()).filter(x=>x!=="");
   const amount = parseFloat(amountInput.value);
   const tokenMint = tokenSelect.value;
   if(!walletPublicKey || !amount || !tokenMint || recipients.length===0){
-    statusMsg.textContent="Fill all fields!";
+    alert("Fill all fields!");
     return;
   }
   logEl.textContent="";
   for(const r of recipients){
-    try{
+    try {
       const toPub = new PublicKey(r);
       const fromATA = await getAssociatedTokenAddress(new PublicKey(tokenMint), walletPublicKey);
       const toATA = await getAssociatedTokenAddress(new PublicKey(tokenMint), toPub);
