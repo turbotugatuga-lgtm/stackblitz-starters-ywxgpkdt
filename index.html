@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Solana Mass Send DApp - Mainnet</title>
+<title>Solana Mass Send DApp - Production</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
-<h1 class="text-3xl font-bold mb-6">Solana Mass Send DApp</h1>
+<body class="bg-gray-50 min-h-screen flex flex-col items-center p-6">
+<h1 class="text-3xl font-bold mb-6 text-center">Solana Mass Send DApp</h1>
 
-<div class="w-full max-w-3xl space-y-6">
+<div class="w-full max-w-4xl space-y-6">
 
   <!-- Wallet Connect -->
   <div class="flex justify-between items-center bg-white p-4 shadow rounded">
@@ -26,7 +26,7 @@
   <!-- Token List -->
   <div class="bg-white p-4 shadow rounded">
     <h2 class="font-semibold mb-2">SPL Tokens in Wallet:</h2>
-    <ul id="tokenList" class="space-y-1 mb-2"></ul>
+    <ul id="tokenList" class="space-y-1 mb-2 max-h-40 overflow-y-auto"></ul>
     <select id="tokenSelect" class="w-full border px-3 py-2 rounded"></select>
   </div>
 
@@ -36,11 +36,11 @@
     <textarea id="recipientList" placeholder="One wallet per line" class="w-full border px-3 py-2 rounded h-24"></textarea>
     <input type="file" id="uploadFile" class="mt-2">
     <input id="amountInput" type="number" step="any" placeholder="Amount per wallet" class="w-full border px-3 py-2 rounded mt-2">
-    <p><strong>Service Fee + Network Gas:</strong> <span id="feeEstimate">-</span> SOL per wallet</p>
+    <p><strong>Service Fee + Estimated Network Gas:</strong> <span id="feeEstimate">-</span> SOL per wallet</p>
     <button id="sendBtn" class="px-6 py-2 bg-green-600 text-white rounded mt-2">Send Tokens</button>
   </div>
 
-  <div id="log" class="bg-gray-200 p-2 rounded text-sm h-32 overflow-y-auto"></div>
+  <div id="log" class="bg-gray-200 p-2 rounded text-sm h-40 overflow-y-auto"></div>
 
 </div>
 
@@ -58,6 +58,7 @@ import {
   TOKEN_PROGRAM_ID
 } from "https://esm.sh/@solana/spl-token";
 
+// Mainnet RPC via Helius
 const RPC = "https://mainnet.helius-rpc.com/?api-key=DQTIx_O7s4BONKlPJ7FWu";
 const connection = new Connection(RPC, "confirmed");
 
@@ -81,17 +82,12 @@ const feeEstimate = document.getElementById("feeEstimate");
 const sendBtn = document.getElementById("sendBtn");
 const logEl = document.getElementById("log");
 
-connectBtn.onclick = async () => {
-  if (!walletPublicKey) await connectWallet();
-};
-
+// Connect / Disconnect
+connectBtn.onclick = async () => { if(!walletPublicKey) await connectWallet(); };
 disconnectBtn.onclick = () => disconnectWallet();
 
 async function connectWallet() {
-  if (!window.solana || !window.solana.isPhantom) {
-    alert("Phantom wallet not detected!");
-    return;
-  }
+  if(!window.solana || !window.solana.isPhantom){ alert("Phantom wallet not detected!"); return; }
   try {
     const resp = await window.solana.connect();
     walletPublicKey = new PublicKey(resp.publicKey.toString());
@@ -99,10 +95,10 @@ async function connectWallet() {
     await loadBalance();
     await loadTokens();
     updateFeeEstimate();
-  } catch(e) { console.error(e); alert("Error connecting wallet: "+e.message); }
+  } catch(e){ console.error(e); alert("Error connecting wallet: "+e.message); }
 }
 
-function disconnectWallet() {
+function disconnectWallet(){
   walletPublicKey = null;
   walletAddress.textContent = "Not connected";
   solBalance.textContent = "-";
@@ -110,28 +106,28 @@ function disconnectWallet() {
   tokenSelect.innerHTML = "";
 }
 
-async function loadBalance() {
+// Load SOL balance
+async function loadBalance(){
   if(!walletPublicKey) return;
   try {
     const balance = await connection.getBalance(walletPublicKey);
     solBalance.textContent = (balance/LAMPORTS_PER_SOL).toFixed(4);
-  } catch(err) { console.error(err); }
+  } catch(err){ console.error(err); }
 }
 
-async function loadTokens() {
+// Load all SPL tokens with balance
+async function loadTokens(){
   if(!walletPublicKey) return;
   try {
     const accounts = await connection.getParsedTokenAccountsByOwner(walletPublicKey, {programId: TOKEN_PROGRAM_ID});
-    tokensCache = accounts.value
-      .map(acc => {
-        const info = acc.account.data.parsed.info;
-        return {mint: info.mint, amount: info.tokenAmount.uiAmount};
-      })
-      .filter(t => t.amount > 0);
-    tokenList.innerHTML = "";
-    tokenSelect.innerHTML = "";
+    tokensCache = accounts.value.map(acc=>{
+      const info = acc.account.data.parsed.info;
+      return {mint: info.mint, amount: info.tokenAmount.uiAmount};
+    }).filter(t=>t.amount>0);
+    tokenList.innerHTML="";
+    tokenSelect.innerHTML="";
     if(tokensCache.length===0){ tokenList.innerHTML="<li>No SPL tokens found.</li>"; return; }
-    tokensCache.forEach(t => {
+    tokensCache.forEach(t=>{
       const li = document.createElement("li");
       li.textContent = `Mint: ${t.mint} | Amount: ${t.amount}`;
       tokenList.appendChild(li);
@@ -140,20 +136,18 @@ async function loadTokens() {
       opt.textContent = `${t.mint} (${t.amount})`;
       tokenSelect.appendChild(opt);
     });
-  } catch(err){
-    console.error(err); 
-    alert("Error loading tokens. Check RPC key or network.");
-  }
+  } catch(err){ console.error(err); alert("Error loading tokens. Check RPC or network."); }
 }
 
-function updateFeeEstimate() {
+// Update service fee estimate
+function updateFeeEstimate(){
   const count = recipientList.value.split("\n").filter(x=>x.trim()!=="").length || 1;
   feeEstimate.textContent = (SERVICE_FEE_PER_WALLET*count).toFixed(6);
 }
 
 recipientList.oninput = updateFeeEstimate;
 
-uploadFile.onchange = async (e) => {
+uploadFile.onchange = async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   const text = await file.text();
@@ -161,15 +155,26 @@ uploadFile.onchange = async (e) => {
   updateFeeEstimate();
 }
 
-sendBtn.onclick = async () => {
+// Send tokens function
+sendBtn.onclick = async ()=>{
   const recipients = recipientList.value.split("\n").map(x=>x.trim()).filter(x=>x!=="");
   const amount = parseFloat(amountInput.value);
   const tokenMint = tokenSelect.value;
-  if(!walletPublicKey || !amount || !tokenMint || recipients.length===0){
-    alert("Fill all fields!");
-    return;
-  }
+  if(!walletPublicKey || !amount || !tokenMint || recipients.length===0){ alert("Fill all fields!"); return; }
+
   logEl.textContent="";
+  const selectedToken = tokensCache.find(t=>t.mint===tokenMint);
+  if(!selectedToken){ alert("Selected token not found in wallet!"); return; }
+
+  // Check total token amount
+  const totalTokenRequired = amount*recipients.length;
+  if(selectedToken.amount<totalTokenRequired){ alert("Insufficient token balance!"); return; }
+
+  // Check SOL for fee + network
+  const solBal = parseFloat(solBalance.textContent);
+  const totalSolFee = SERVICE_FEE_PER_WALLET*recipients.length;
+  if(solBal<totalSolFee){ alert("Insufficient SOL balance to pay fees!"); return; }
+
   for(const r of recipients){
     try {
       const toPub = new PublicKey(r);
@@ -191,6 +196,7 @@ sendBtn.onclick = async () => {
       console.error(err);
     }
   }
+
   await loadBalance();
 };
 </script>
