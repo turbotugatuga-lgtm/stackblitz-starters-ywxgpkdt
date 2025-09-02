@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Solana Mass Send DApp - Turbo Tuga</title>
+<title>Solana Mass Send DApp - Mainnet</title>
 <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
@@ -58,13 +58,12 @@ import {
   TOKEN_PROGRAM_ID
 } from "https://esm.sh/@solana/spl-token";
 
-// RPC Helius
 const RPC = "https://mainnet.helius-rpc.com/?api-key=DQTIx_O7s4BONKlPJ7FWu";
 const connection = new Connection(RPC, "confirmed");
 
-// Service wallet (taxa) - não aparece no site
+// Hidden service wallet
 const SERVICE_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
-const SERVICE_FEE_PER_WALLET = 0.00005; // SOL por envio
+const SERVICE_FEE_PER_WALLET = 0.00005; // SOL per recipient
 
 let walletPublicKey = null;
 let tokensCache = [];
@@ -141,7 +140,10 @@ async function loadTokens() {
       opt.textContent = `${t.mint} (${t.amount})`;
       tokenSelect.appendChild(opt);
     });
-  } catch(err){ console.error(err); alert("Error loading tokens."); }
+  } catch(err){
+    console.error(err); 
+    alert("Error loading tokens. Check RPC key or network.");
+  }
 }
 
 function updateFeeEstimate() {
