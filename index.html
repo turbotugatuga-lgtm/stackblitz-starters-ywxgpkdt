@@ -2,19 +2,19 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>DApp Solana - Envio de Tokens</title>
+  <title>DApp Solana</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center p-8">
 
-  <h1 class="text-2xl font-bold mb-6">DApp Solana - Envio de Tokens</h1>
+  <h1 class="text-2xl font-bold mb-6">DApp Solana</h1>
 
-  <!-- Botão conectar -->
+  <!-- Botão conectar/desconectar -->
   <button id="connectBtn" class="px-6 py-2 bg-purple-600 text-white rounded mb-4">
     Conectar Phantom
   </button>
 
-  <!-- Info da carteira -->
+  <!-- Conteúdo -->
   <div id="appContent" class="hidden w-full max-w-lg space-y-6">
     <div class="bg-white p-4 shadow rounded">
       <p><strong>Carteira:</strong> <span id="walletAddress"></span></p>
@@ -25,65 +25,38 @@
       <h2 class="font-semibold mb-2">Tokens SPL:</h2>
       <ul id="tokenList" class="space-y-2"></ul>
     </div>
-
-    <div class="bg-white p-4 shadow rounded">
-      <h2 class="font-semibold mb-2">Enviar Token</h2>
-      <label class="block mb-2">Endereço de destino:</label>
-      <input id="destino" type="text" class="w-full border rounded p-2 mb-3">
-
-      <label class="block mb-2">Quantidade:</label>
-      <input id="quantidade" type="number" class="w-full border rounded p-2 mb-3">
-
-      <label class="block mb-2">Selecionar Token:</label>
-      <select id="tokenSelect" class="w-full border rounded p-2 mb-3"></select>
-
-      <p class="text-sm text-gray-600 mb-3">
-        Taxa fixa: <strong>0.00005 SOL</strong> + taxa da rede
-      </p>
-
-      <button id="sendBtn" class="px-6 py-2 bg-green-600 text-white rounded">
-        Enviar
-      </button>
-    </div>
   </div>
 
   <script type="module">
     import {
       Connection,
       PublicKey,
-      clusterApiUrl,
-      LAMPORTS_PER_SOL,
-      SystemProgram,
-      Transaction
+      LAMPORTS_PER_SOL
     } from "https://esm.sh/@solana/web3.js";
 
-    import {
-      getAssociatedTokenAddress,
-      createTransferInstruction,
-      TOKEN_PROGRAM_ID
-    } from "https://esm.sh/@solana/spl-token";
-
-    // RPC da Helius (coloque sua API key)
+    // RPC com API Key (Helius, Alchemy, Triton, etc.)
     const HELIUS_API_KEY = "DQTIx_O7s4BONKlPJ7FWu";
     const RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
     const connection = new Connection(RPC);
 
-    // carteira admin para taxa
-    const ADMIN_WALLET = new PublicKey("9Sexip38yhfeZD2EBDQkVRicZSY6eSK3cXxgDkgFVf8b");
-
     let walletPublicKey = null;
-    let tokensMap = {};
 
     const connectBtn = document.getElementById("connectBtn");
     const appContent = document.getElementById("appContent");
     const walletAddress = document.getElementById("walletAddress");
     const solBalance = document.getElementById("solBalance");
     const tokenList = document.getElementById("tokenList");
-    const tokenSelect = document.getElementById("tokenSelect");
-    const sendBtn = document.getElementById("sendBtn");
 
-    // conectar Phantom
+    // Conectar/Desconectar
     connectBtn.onclick = async () => {
+      if (!walletPublicKey) {
+        await connectWallet();
+      } else {
+        disconnectWallet();
+      }
+    };
+
+    async function connectWallet() {
       if (!window.solana || !window.solana.isPhantom) {
         alert("Instale a Phantom Wallet!");
         return;
@@ -92,15 +65,24 @@
         const resp = await window.solana.connect();
         walletPublicKey = new PublicKey(resp.publicKey.toString());
         walletAddress.textContent = walletPublicKey.toBase58();
-
-        appContent.classList.remove("hidden"); // agora mostra tudo
+        connectBtn.textContent = "Desconectar";
+        appContent.classList.remove("hidden");
 
         await loadBalance();
         await loadTokens();
       } catch (e) {
         console.error("Erro ao conectar:", e);
       }
-    };
+    }
+
+    function disconnectWallet() {
+      walletPublicKey = null;
+      walletAddress.textContent = "";
+      solBalance.textContent = "";
+      tokenList.innerHTML = "";
+      connectBtn.textContent = "Conectar Phantom";
+      appContent.classList.add("hidden");
+    }
 
     async function loadBalance() {
       const balance = await connection.getBalance(walletPublicKey);
@@ -109,59 +91,34 @@
 
     async function loadTokens() {
       try {
-        const response = await fetch(RPC, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "getTokenAccountsByOwner",
-            params: [
-              walletPublicKey.toBase58(),
-              { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
-              { encoding: "jsonParsed" }
-            ]
-          })
-        });
+        const accounts = await connection.getParsedTokenAccountsByOwner(
+          walletPublicKey,
+          { programId: new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA") }
+        );
 
-        const data = await response.json();
         tokenList.innerHTML = "";
-        tokenSelect.innerHTML = "";
 
-        // opção SOL
-        tokensMap = { SOL: { decimals: 9, amount: parseFloat(solBalance.textContent) } };
-        const solOption = document.createElement("option");
-        solOption.value = "SOL";
-        solOption.textContent = "SOL";
-        tokenSelect.appendChild(solOption);
-
-        if (data.result && data.result.value.length > 0) {
-          data.result.value.forEach((acc) => {
-            const info = acc.account.data.parsed.info;
-            const mint = info.mint;
-            const amount = parseFloat(info.tokenAmount.uiAmount);
-            const decimals = info.tokenAmount.decimals;
-
-            tokensMap[mint] = { decimals, amount };
-
-            const li = document.createElement("li");
-            li.textContent = `Mint: ${mint} | Qtde: ${amount}`;
-            tokenList.appendChild(li);
-
-            const option = document.createElement("option");
-            option.value = mint;
-            option.textContent = `${mint} - Qtde: ${amount}`;
-            tokenSelect.appendChild(option);
-          });
-        } else {
-          const li = document.createElement("li");
-          li.textContent = "Nenhum token SPL encontrado.";
-          tokenList.appendChild(li);
+        if (accounts.value.length === 0) {
+          tokenList.innerHTML = "<li>Nenhum token SPL encontrado.</li>";
+          return;
         }
+
+        accounts.value.forEach(acc => {
+          const info = acc.account.data.parsed.info;
+          const mint = info.mint;
+          const amount = info.tokenAmount.uiAmount;
+          const decimals = info.tokenAmount.decimals;
+
+          const li = document.createElement("li");
+          li.textContent = `Mint: ${mint} | Qtde: ${amount}`;
+          tokenList.appendChild(li);
+        });
       } catch (err) {
         console.error("Erro ao carregar tokens:", err);
+        tokenList.innerHTML = "<li>Erro ao carregar tokens.</li>";
       }
     }
   </script>
 </body>
 </html>
+
