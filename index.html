@@ -2,20 +2,30 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <title>DApp Solana</title>
+  <title>DApp Solana Completo</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col items-center p-8">
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
 
-  <h1 class="text-2xl font-bold mb-6">DApp Solana</h1>
+  <h1 class="text-3xl font-bold mb-6">DApp Solana</h1>
 
-  <!-- Botão conectar/desconectar -->
-  <button id="connectBtn" class="px-6 py-2 bg-purple-600 text-white rounded mb-4">
-    Conectar Phantom
-  </button>
+  <!-- Ações de Conexão -->
+  <div class="flex flex-col md:flex-row gap-4 mb-6">
+    <button id="connectBtn" class="px-6 py-2 bg-purple-600 text-white rounded">
+      Conectar Phantom
+    </button>
 
-  <!-- Conteúdo -->
-  <div id="appContent" class="hidden w-full max-w-lg space-y-6">
+    <input id="manualWallet" type="text" placeholder="Endereço da carteira" class="px-4 py-2 border rounded w-80">
+    <button id="loadManualBtn" class="px-4 py-2 bg-blue-600 text-white rounded">Carregar</button>
+
+    <input id="uploadWallet" type="file" accept=".json" class="px-4 py-2 border rounded">
+  </div>
+
+  <p id="statusMsg" class="text-red-600 mb-4"></p>
+
+  <!-- Dashboard -->
+  <div id="appContent" class="w-full max-w-2xl space-y-6 hidden">
+
     <div class="bg-white p-4 shadow rounded">
       <p><strong>Carteira:</strong> <span id="walletAddress"></span></p>
       <p><strong>SOL:</strong> <span id="solBalance"></span></p>
@@ -25,53 +35,93 @@
       <h2 class="font-semibold mb-2">Tokens SPL:</h2>
       <ul id="tokenList" class="space-y-2"></ul>
     </div>
+
+    <!-- Envio de Token -->
+    <div class="bg-white p-4 shadow rounded">
+      <h2 class="font-semibold mb-4">Enviar Token</h2>
+      <div class="space-y-4">
+        <select id="tokenSelect" class="w-full border px-3 py-2 rounded"></select>
+        <input id="recipient" type="text" placeholder="Carteira destino" class="w-full border px-3 py-2 rounded">
+        <input id="amount" type="number" step="0.0001" placeholder="Quantidade" class="w-full border px-3 py-2 rounded">
+        <p><strong>Taxa estimada:</strong> <span id="feeEstimate">-</span> SOL</p>
+        <button id="sendBtn" class="px-6 py-2 bg-green-600 text-white rounded">Enviar</button>
+      </div>
+    </div>
   </div>
 
   <script type="module">
     import {
       Connection,
       PublicKey,
-      LAMPORTS_PER_SOL
+      LAMPORTS_PER_SOL,
+      Transaction,
+      SystemProgram,
+      sendTransaction
     } from "https://esm.sh/@solana/web3.js";
 
-    // RPC com API Key (Helius, Alchemy, Triton, etc.)
-    const HELIUS_API_KEY = "DQTIx_O7s4BONKlPJ7FWu";
+    // 🔑 Troque pela sua API Key real da Helius
+    const HELIUS_API_KEY = "SUA_API_KEY_AQUI";
     const RPC = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
     const connection = new Connection(RPC);
 
     let walletPublicKey = null;
+    let tokensCache = [];
 
     const connectBtn = document.getElementById("connectBtn");
+    const statusMsg = document.getElementById("statusMsg");
     const appContent = document.getElementById("appContent");
     const walletAddress = document.getElementById("walletAddress");
     const solBalance = document.getElementById("solBalance");
     const tokenList = document.getElementById("tokenList");
+    const tokenSelect = document.getElementById("tokenSelect");
+    const manualWallet = document.getElementById("manualWallet");
+    const loadManualBtn = document.getElementById("loadManualBtn");
+    const uploadWallet = document.getElementById("uploadWallet");
+    const feeEstimate = document.getElementById("feeEstimate");
 
-    // Conectar/Desconectar
     connectBtn.onclick = async () => {
       if (!walletPublicKey) {
-        await connectWallet();
+        await connectPhantom();
       } else {
         disconnectWallet();
       }
     };
 
-    async function connectWallet() {
+    loadManualBtn.onclick = async () => {
+      try {
+        const pub = new PublicKey(manualWallet.value.trim());
+        walletPublicKey = pub;
+        await afterConnect();
+      } catch {
+        statusMsg.textContent = "Endereço inválido.";
+      }
+    };
+
+    uploadWallet.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const json = JSON.parse(text);
+        const pub = new PublicKey(json.address);
+        walletPublicKey = pub;
+        await afterConnect();
+      } catch {
+        statusMsg.textContent = "Arquivo inválido.";
+      }
+    };
+
+    async function connectPhantom() {
       if (!window.solana || !window.solana.isPhantom) {
-        alert("Instale a Phantom Wallet!");
+        statusMsg.textContent = "Phantom Wallet não detectada.";
         return;
       }
       try {
         const resp = await window.solana.connect();
         walletPublicKey = new PublicKey(resp.publicKey.toString());
-        walletAddress.textContent = walletPublicKey.toBase58();
-        connectBtn.textContent = "Desconectar";
-        appContent.classList.remove("hidden");
-
-        await loadBalance();
-        await loadTokens();
+        await afterConnect();
       } catch (e) {
-        console.error("Erro ao conectar:", e);
+        statusMsg.textContent = "Erro ao conectar: " + e.message;
       }
     }
 
@@ -80,13 +130,31 @@
       walletAddress.textContent = "";
       solBalance.textContent = "";
       tokenList.innerHTML = "";
+      tokenSelect.innerHTML = "";
       connectBtn.textContent = "Conectar Phantom";
       appContent.classList.add("hidden");
+      statusMsg.textContent = "Carteira desconectada.";
+    }
+
+    async function afterConnect() {
+      walletAddress.textContent = walletPublicKey.toBase58();
+      connectBtn.textContent = "Desconectar";
+      appContent.classList.remove("hidden");
+      statusMsg.textContent = "";
+
+      await loadBalance();
+      await loadTokens();
+      await estimateFee();
     }
 
     async function loadBalance() {
-      const balance = await connection.getBalance(walletPublicKey);
-      solBalance.textContent = (balance / LAMPORTS_PER_SOL).toFixed(4);
+      try {
+        const balance = await connection.getBalance(walletPublicKey);
+        solBalance.textContent = (balance / LAMPORTS_PER_SOL).toFixed(4);
+      } catch (err) {
+        statusMsg.textContent = "Erro ao carregar saldo.";
+        console.error(err);
+      }
     }
 
     async function loadTokens() {
@@ -97,28 +165,53 @@
         );
 
         tokenList.innerHTML = "";
+        tokenSelect.innerHTML = "";
 
-        if (accounts.value.length === 0) {
+        tokensCache = accounts.value.map(acc => {
+          const info = acc.account.data.parsed.info;
+          return {
+            mint: info.mint,
+            amount: info.tokenAmount.uiAmount
+          };
+        });
+
+        if (tokensCache.length === 0) {
           tokenList.innerHTML = "<li>Nenhum token SPL encontrado.</li>";
           return;
         }
 
-        accounts.value.forEach(acc => {
-          const info = acc.account.data.parsed.info;
-          const mint = info.mint;
-          const amount = info.tokenAmount.uiAmount;
-          const decimals = info.tokenAmount.decimals;
-
+        tokensCache.forEach(t => {
           const li = document.createElement("li");
-          li.textContent = `Mint: ${mint} | Qtde: ${amount}`;
+          li.textContent = `Mint: ${t.mint} | Qtde: ${t.amount}`;
           tokenList.appendChild(li);
+
+          const opt = document.createElement("option");
+          opt.value = t.mint;
+          opt.textContent = `${t.mint} (${t.amount})`;
+          tokenSelect.appendChild(opt);
         });
       } catch (err) {
-        console.error("Erro ao carregar tokens:", err);
-        tokenList.innerHTML = "<li>Erro ao carregar tokens.</li>";
+        statusMsg.textContent = "Erro ao carregar tokens.";
+        console.error(err);
+      }
+    }
+
+    async function estimateFee() {
+      try {
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: walletPublicKey,
+            toPubkey: walletPublicKey,
+            lamports: 1
+          })
+        );
+        const { value } = await connection.getFeeForMessage(tx.compileMessage());
+        feeEstimate.textContent = (value / LAMPORTS_PER_SOL).toFixed(6);
+      } catch (err) {
+        feeEstimate.textContent = "Erro";
+        console.error(err);
       }
     }
   </script>
 </body>
 </html>
-
